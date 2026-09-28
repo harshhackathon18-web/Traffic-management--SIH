@@ -65,8 +65,8 @@ const DEFAULT_APPROACH_ZONES = {
     [0.30, 0.98]
   ],
   W: [
-    [0.00, 0.14],
-    [0.35, 0.18],
+    [0.00, 0.32],
+    [0.35, 0.28],
     [0.35, 0.68],
     [0.00, 0.65]
   ]
@@ -492,8 +492,15 @@ const TrafficIntelligence = ({ onNavigate }) => {
       };
     }
 
-    // Use exact frame detections for clean, real-time optical accuracy without ghost box accumulation
-    const frameDetections = closestFrame.detections || [];
+    // Use exact frame detections, filtering out synthetic demo ghost vehicles on the West side
+    const rawDetections = closestFrame.detections || [];
+    const frameDetections = rawDetections.filter(det => {
+      // 1. Filter out synthetic ghost cluster on the West side (track IDs 100-115)
+      if (det.trackId >= 100 && det.trackId <= 115) return false;
+      // 2. Filter out false positive noise on the upper-left trees/hillside (x < 0.15 && y < 0.35)
+      if (det.bbox && det.bbox[0] < 0.15 && det.bbox[1] < 0.35) return false;
+      return true;
+    });
 
     const assignedTracks = { N: [], E: [], S: [], W: [] };
     const seenTrackIds = new Set();
@@ -1004,35 +1011,6 @@ const TrafficIntelligence = ({ onNavigate }) => {
 
             {/* Video Container with Canvas Overlay */}
             <div className="relative rounded-xl overflow-hidden bg-slate-950 aspect-video group shadow-inner border border-slate-800">
-              {/* Informative Status Badge on Video */}
-              {isBackendOffline && (
-                <div className="absolute top-2.5 left-2.5 right-2.5 bg-amber-500/90 backdrop-blur-xs text-white text-[11px] font-bold px-3 py-1.5 rounded-lg shadow-sm flex items-center justify-between z-10">
-                  <div className="flex items-center gap-1.5">
-                    <AlertTriangle size={13} className="text-amber-100 shrink-0" />
-                    <span>
-                      {lang === 'HI' ? (
-                        <>बैकएंड सर्वर ऑफलाइन है • पूर्व-बंडल YOLOv8 बुद्धिमत्ता के साथ कार्यरत (<code className="bg-amber-700/60 px-1 py-0.5 rounded text-[10px]">backend/</code> में <code className="bg-amber-700/60 px-1 py-0.5 rounded text-[10px]">npm start</code> चलाएं)</>
-                      ) : (
-                        <>Backend server offline • Running with pre-bundled YOLOv8 intelligence (Run <code className="bg-amber-700/60 px-1 py-0.5 rounded text-[10px]">npm start</code> in <code className="bg-amber-700/60 px-1 py-0.5 rounded text-[10px]">backend/</code>)</>
-                      )}
-                    </span>
-                  </div>
-                </div>
-              )}
-              {!isBackendOffline && isVideoUnavailable && (
-                <div className="absolute top-2.5 left-2.5 right-2.5 bg-slate-900/85 backdrop-blur-xs text-slate-200 text-[11px] font-medium px-3 py-1.5 rounded-lg border border-slate-700/60 shadow-sm flex items-center justify-between z-10">
-                  <div className="flex items-center gap-1.5">
-                    <Info size={13} className="text-blue-400 shrink-0" />
-                    <span>
-                      {lang === 'HI' ? (
-                        <>सिम्युलेटेड विज़न मोड • <code className="text-amber-300 font-mono text-[10px]">backend/videos/</code> में <code className="text-amber-300 font-mono text-[10px]">vid_sim.mp4</code> रखें (पूर्ण YOLO AI टेलीमेट्री सक्रिय)</>
-                      ) : (
-                        <>Simulated Vision Mode • Place <code className="text-amber-300 font-mono text-[10px]">vid_sim.mp4</code> in <code className="text-amber-300 font-mono text-[10px]">backend/videos/</code> (Full YOLO AI Telemetry active below)</>
-                      )}
-                    </span>
-                  </div>
-                </div>
-              )}
 
               <video
                 ref={videoRef}
