@@ -26,7 +26,8 @@ import {
 } from 'lucide-react';
 import LiveVisionTelemetryPanel from '../components/LiveVisionTelemetryPanel';
 import fallbackBundledAnalysis from '../data/bundledVideoAnalysis.json';
-import { BACKEND_ORIGIN } from '../utils/backendUrl';
+import { BACKEND_ORIGIN, IS_STATIC_HOSTING } from '../utils/backendUrl';
+import { getSupabaseVideoUrl } from '../utils/supabase';
 
 const API_BASE = `${BACKEND_ORIGIN}/api/video`;
 
@@ -134,8 +135,29 @@ const TrafficIntelligence = ({ onNavigate }) => {
   const [videoDurationSec, setVideoDurationSec] = useState(224.5);
   const [videoDimensions, setVideoDimensions] = useState({ width: 1280, height: 720 });
   const [isReplayComplete, setIsReplayComplete] = useState(false);
-  const [isBackendOffline, setIsBackendOffline] = useState(false);
+  const [isBackendOffline, setIsBackendOffline] = useState(IS_STATIC_HOSTING);
   const [isVideoUnavailable, setIsVideoUnavailable] = useState(false);
+  const [useLocalVideoFallback, setUseLocalVideoFallback] = useState(IS_STATIC_HOSTING);
+
+  // Compute active video source (checks Supabase, then local bundled MP4, then backend stream)
+  const currentVideoSrc = useMemo(() => {
+    // 1. Supabase Storage CDN Video
+    const supabaseUrl = getSupabaseVideoUrl(
+      selectedVideo === 'vid_sim' ? 'vid_sim.mp4' : `${selectedVideo}.mp4`
+    );
+    if (supabaseUrl) {
+      return supabaseUrl;
+    }
+
+    // 2. Default bundled simulation video fallback
+    if (selectedVideo === 'vid_sim') {
+      if (useLocalVideoFallback || isBackendOffline) {
+        return '/videos/vid_sim.mp4';
+      }
+      return `${API_BASE}/stream/${selectedVideo}`;
+    }
+    return `${API_BASE}/stream/${selectedVideo}`;
+  }, [selectedVideo, useLocalVideoFallback, isBackendOffline]);
 
   // Sync simulation speed to video playback rate
   useEffect(() => {
@@ -178,6 +200,17 @@ const TrafficIntelligence = ({ onNavigate }) => {
 
   // Load bundled video config on mount and auto-load pre-computed analysis
   useEffect(() => {
+    if (IS_STATIC_HOSTING) {
+      setIsBackendOffline(true);
+      setUseLocalVideoFallback(true);
+      setIsVideoUnavailable(false);
+      if (fallbackBundledAnalysis) {
+        setAnalysisResults(fallbackBundledAnalysis);
+        setAnalysisStatus('COMPLETED');
+      }
+      return;
+    }
+
     fetch(`${API_BASE}/bundled`)
       .then(res => {
         if (!res.ok) throw new Error('Bundled config endpoint returned ' + res.status);
@@ -227,13 +260,18 @@ const TrafficIntelligence = ({ onNavigate }) => {
       .catch(err => {
         console.warn('Backend server offline or unreachable, applying client-bundled intelligence fallback:', err);
         setIsBackendOffline(true);
-        setIsVideoUnavailable(true);
+        if (selectedVideo === 'vid_sim') {
+          setUseLocalVideoFallback(true);
+          setIsVideoUnavailable(false);
+        } else {
+          setIsVideoUnavailable(true);
+        }
         if (fallbackBundledAnalysis) {
           setAnalysisResults(fallbackBundledAnalysis);
           setAnalysisStatus('COMPLETED');
         }
       });
-  }, []);
+  }, [selectedVideo]);
 
   // Handle local video upload
   const handleFileUpload = async (e) => {
@@ -498,9 +536,9 @@ const TrafficIntelligence = ({ onNavigate }) => {
 
     ctx.clearRect(0, 0, w, h);
 
-    // If physical video is not streaming, draw modern dark simulated roadway backdrop
-    const isPhysicalVideoReady = video && !video.error && video.readyState >= 2 && !isVideoUnavailable;
-    if (!isPhysicalVideoReady) {
+    // If physical video is not available, draw modern dark simulated roadway backdrop
+    const shouldDrawSimulatedRoad = isVideoUnavailable || (video && video.error);
+    if (shouldDrawSimulatedRoad) {
       // Dark asphalt
       ctx.fillStyle = '#0a101d';
       ctx.fillRect(0, 0, w, h);
@@ -889,15 +927,22 @@ const TrafficIntelligence = ({ onNavigate }) => {
 
               <video
                 ref={videoRef}
-                src={isBackendOffline && selectedVideo === 'vid_sim' ? '/videos/vid_sim.mp4' : `${API_BASE}/stream/${selectedVideo}`}
+                src={currentVideoSrc}
+                muted
+                playsInline
+                preload="auto"
                 onTimeUpdate={handleTimeUpdate}
                 onLoadedMetadata={handleLoadedMetadata}
                 onEnded={handleVideoEnded}
-                onError={() => {
-                  console.warn('Physical video stream unavailable, switching to simulated canvas overlay');
-                  setIsVideoUnavailable(true);
+                onError={(e) => {
+                  console.warn('Video element error on source:', currentVideoSrc, e);
+                  if (selectedVideo === 'vid_sim' && !useLocalVideoFallback) {
+                    setUseLocalVideoFallback(true);
+                    setIsVideoUnavailable(false);
+                  } else {
+                    setIsVideoUnavailable(true);
+                  }
                 }}
-                crossOrigin="anonymous"
                 className={`w-full h-full object-contain ${isVideoUnavailable ? 'hidden' : 'block'}`}
               />
               <canvas
@@ -948,8 +993,12 @@ const TrafficIntelligence = ({ onNavigate }) => {
                       setIsPlaying(false);
                     } else {
                       if (videoRef.current && !isVideoUnavailable) {
-                        videoRef.current.play().catch(() => {
-                          setIsVideoUnavailable(true);
+                        videoRef.current.play().catch((err) => {
+                          console.warn('Playback error (retrying muted):', err);
+                          if (videoRef.current) {
+                            videoRef.current.muted = true;
+                            videoRef.current.play().catch(e => console.warn('Muted playback retry failed:', e));
+                          }
                         });
                       }
                       setIsPlaying(true);
