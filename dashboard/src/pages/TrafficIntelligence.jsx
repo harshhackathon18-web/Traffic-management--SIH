@@ -128,6 +128,9 @@ const TrafficIntelligence = ({ onNavigate }) => {
   const [analysisError, setAnalysisError] = useState(null);
 
   // Video playback & overlay synchronization
+const GITHUB_CDN_VIDEO =
+  'https://raw.githubusercontent.com/harshhackathon18-web/Traffic-management--SIH/main/dashboard/public/videos/vid_sim.mp4';
+
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -149,9 +152,9 @@ const TrafficIntelligence = ({ onNavigate }) => {
   const [urlInputValue, setUrlInputValue] = useState('');
   const [videoLoadError, setVideoLoadError] = useState(null);
 
-  // Compute active video source (checks direct custom URL, Supabase, local bundled MP4, then backend stream)
+  // Compute active video source (checks direct custom URL, Supabase, GitHub CDN, local bundled MP4, then backend stream)
   const currentVideoSrc = useMemo(() => {
-    // 0. Direct URL configured in UI / localStorage
+    // 0. Direct URL configured in UI / localStorage or Blob URL
     if (customVideoUrl && customVideoUrl.trim()) {
       return customVideoUrl.trim();
     }
@@ -164,10 +167,10 @@ const TrafficIntelligence = ({ onNavigate }) => {
       return supabaseUrl;
     }
 
-    // 2. Default bundled simulation video fallback
+    // 2. Default bundled simulation video fallback: use GitHub CDN with CORS, then /videos/vid_sim.mp4
     if (selectedVideo === 'vid_sim') {
       if (useLocalVideoFallback || isBackendOffline) {
-        return '/videos/vid_sim.mp4';
+        return GITHUB_CDN_VIDEO;
       }
       return `${API_BASE}/stream/${selectedVideo}`;
     }
@@ -292,6 +295,21 @@ const TrafficIntelligence = ({ onNavigate }) => {
   const handleFileUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
+
+    // Direct browser blob playback when offline or hosted statically
+    if (isBackendOffline || IS_STATIC_HOSTING) {
+      const localBlobUrl = URL.createObjectURL(file);
+      setCustomVideoUrl(localBlobUrl);
+      setUploadedVideoInfo({ title: file.name, videoId: 'local_upload' });
+      setSelectedVideo('local_upload');
+      if (fallbackBundledAnalysis) {
+        setAnalysisResults(fallbackBundledAnalysis);
+        setAnalysisStatus('COMPLETED');
+      }
+      setIsVideoUnavailable(false);
+      setVideoLoadError(null);
+      return;
+    }
 
     const formData = new FormData();
     formData.append('video', file);
@@ -892,8 +910,25 @@ const TrafficIntelligence = ({ onNavigate }) => {
                     title="Directly enter Supabase or custom MP4 video URL"
                   >
                     <Sliders size={12} />
-                    <span>{customVideoUrl ? 'Supabase URL Configured ✓' : 'Set Video URL'}</span>
+                    <span>{customVideoUrl ? 'Video URL Active ✓' : 'Set Video URL'}</span>
                   </button>
+
+                  <button
+                    onClick={() => fileInputRef.current && fileInputRef.current.click()}
+                    className="px-2.5 py-1 text-[11px] font-semibold rounded-md border border-[#003366] bg-[#003366] hover:bg-[#0F2942] text-white flex items-center gap-1 transition cursor-pointer shadow-xs"
+                    title="Upload and play an MP4 file from your device"
+                  >
+                    <Upload size={12} />
+                    <span>Upload from PC</span>
+                  </button>
+
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    accept="video/mp4,video/webm"
+                    className="hidden"
+                    onChange={handleFileUpload}
+                  />
                 </div>
 
                 {/* Analysis Execution Button in Video Corner (where timer previously was) */}
