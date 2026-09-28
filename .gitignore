@@ -5,3 +5,14 @@
 extracted_pdf_imgs/
 pdf_assets/
 pdf_slides/
+
+# Dependencies & Build outputs
+node_modules/
+dist/
+dist-ssr/
+.vercel
+
+# Environment
+.env
+.env.*
+!.env.example

@@ -1,0 +1,10 @@
+{
+  "name": "traffic-management-sih-root",
+  "private": true,
+  "scripts": {
+    "install": "npm --prefix dashboard install",
+    "build": "npm --prefix dashboard run build",
+    "dev": "npm --prefix dashboard run dev",
+    "preview": "npm --prefix dashboard run preview"
+  }
+}
