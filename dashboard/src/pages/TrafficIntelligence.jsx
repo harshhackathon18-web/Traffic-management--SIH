@@ -128,8 +128,8 @@ const TrafficIntelligence = ({ onNavigate }) => {
   const [analysisError, setAnalysisError] = useState(null);
 
   // Video playback & overlay synchronization
-const GITHUB_CDN_VIDEO =
-  'https://raw.githubusercontent.com/harshhackathon18-web/Traffic-management--SIH/main/dashboard/public/videos/vid_sim.mp4';
+  const DEFAULT_SUPABASE_VIDEO_URL =
+    'https://jknywzautezlyczarteu.supabase.co/storage/v1/object/public/traffic-videos/WhatsApp%20Video%202026-09-28%20at%2010.56.39%20PM.mp4';
 
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
@@ -152,7 +152,7 @@ const GITHUB_CDN_VIDEO =
   const [urlInputValue, setUrlInputValue] = useState('');
   const [videoLoadError, setVideoLoadError] = useState(null);
 
-  // Compute active video source (checks direct custom URL, Supabase, GitHub CDN, local bundled MP4, then backend stream)
+  // Compute active video source (checks direct custom URL, Supabase env, default Supabase CDN video, then backend stream)
   const currentVideoSrc = useMemo(() => {
     // 0. Direct URL configured in UI / localStorage or Blob URL
     if (customVideoUrl && customVideoUrl.trim()) {
@@ -167,15 +167,12 @@ const GITHUB_CDN_VIDEO =
       return supabaseUrl;
     }
 
-    // 2. Default bundled simulation video fallback: use GitHub CDN with CORS, then /videos/vid_sim.mp4
+    // 2. Default to your Supabase Video URL
     if (selectedVideo === 'vid_sim') {
-      if (useLocalVideoFallback || isBackendOffline) {
-        return GITHUB_CDN_VIDEO;
-      }
-      return `${API_BASE}/stream/${selectedVideo}`;
+      return DEFAULT_SUPABASE_VIDEO_URL;
     }
     return `${API_BASE}/stream/${selectedVideo}`;
-  }, [customVideoUrl, selectedVideo, useLocalVideoFallback, isBackendOffline]);
+  }, [customVideoUrl, selectedVideo]);
 
   // Sync simulation speed to video playback rate
   useEffect(() => {
