@@ -138,10 +138,25 @@ const TrafficIntelligence = ({ onNavigate }) => {
   const [isBackendOffline, setIsBackendOffline] = useState(IS_STATIC_HOSTING);
   const [isVideoUnavailable, setIsVideoUnavailable] = useState(false);
   const [useLocalVideoFallback, setUseLocalVideoFallback] = useState(IS_STATIC_HOSTING);
+  const [customVideoUrl, setCustomVideoUrl] = useState(() => {
+    try {
+      return localStorage.getItem('sih_custom_video_url') || '';
+    } catch {
+      return '';
+    }
+  });
+  const [showUrlInput, setShowUrlInput] = useState(false);
+  const [urlInputValue, setUrlInputValue] = useState('');
+  const [videoLoadError, setVideoLoadError] = useState(null);
 
-  // Compute active video source (checks Supabase, then local bundled MP4, then backend stream)
+  // Compute active video source (checks direct custom URL, Supabase, local bundled MP4, then backend stream)
   const currentVideoSrc = useMemo(() => {
-    // 1. Supabase Storage CDN Video
+    // 0. Direct URL configured in UI / localStorage
+    if (customVideoUrl && customVideoUrl.trim()) {
+      return customVideoUrl.trim();
+    }
+
+    // 1. Supabase Storage CDN Video from env
     const supabaseUrl = getSupabaseVideoUrl(
       selectedVideo === 'vid_sim' ? 'vid_sim.mp4' : `${selectedVideo}.mp4`
     );
@@ -157,7 +172,7 @@ const TrafficIntelligence = ({ onNavigate }) => {
       return `${API_BASE}/stream/${selectedVideo}`;
     }
     return `${API_BASE}/stream/${selectedVideo}`;
-  }, [selectedVideo, useLocalVideoFallback, isBackendOffline]);
+  }, [customVideoUrl, selectedVideo, useLocalVideoFallback, isBackendOffline]);
 
   // Sync simulation speed to video playback rate
   useEffect(() => {
@@ -857,40 +872,102 @@ const TrafficIntelligence = ({ onNavigate }) => {
           <div className="bg-white rounded-xl border border-[#CBD5E1] shadow-xs p-5 space-y-4">
 
             {/* Video Selector & Controls Bar */}
-            <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-100">
-              <div className="flex items-center space-x-2.5">
-                <span className="text-[11px] font-bold text-[#475569] uppercase tracking-wider flex items-center gap-1">
-                  <Video size={14} className="text-[#003366]" /> {lang === 'HI' ? 'वीडियो स्रोत:' : 'Video Source:'}
-                </span>
-                <span className="px-3 py-1.5 rounded-lg text-xs font-bold bg-[#003366] text-white shadow-xs">
-                  {lang === 'HI' ? 'यातायात सिमुलेशन वीडियो (डिफ़ॉल्ट)' : (bundledVideoInfo.title || 'Traffic Simulation Video (Default)')}
-                </span>
+            <div className="space-y-3 pb-3 border-b border-slate-100">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center space-x-2.5">
+                  <span className="text-[11px] font-bold text-[#475569] uppercase tracking-wider flex items-center gap-1">
+                    <Video size={14} className="text-[#003366]" /> {lang === 'HI' ? 'वीडियो स्रोत:' : 'Video Source:'}
+                  </span>
+                  <span className="px-3 py-1.5 rounded-lg text-xs font-bold bg-[#003366] text-white shadow-xs">
+                    {customVideoUrl
+                      ? 'Custom Supabase / Remote URL'
+                      : (lang === 'HI' ? 'यातायात सिमुलेशन वीडियो (डिफ़ॉल्ट)' : (bundledVideoInfo.title || 'Traffic Simulation Video (Default)'))}
+                  </span>
+                  <button
+                    onClick={() => {
+                      setUrlInputValue(customVideoUrl);
+                      setShowUrlInput(prev => !prev);
+                    }}
+                    className="px-2.5 py-1 text-[11px] font-semibold rounded-md border border-slate-300 hover:bg-slate-100 text-slate-700 flex items-center gap-1 transition cursor-pointer"
+                    title="Directly enter Supabase or custom MP4 video URL"
+                  >
+                    <Sliders size={12} />
+                    <span>{customVideoUrl ? 'Supabase URL Configured ✓' : 'Set Video URL'}</span>
+                  </button>
+                </div>
+
+                {/* Analysis Execution Button in Video Corner (where timer previously was) */}
+                <div className="flex items-center space-x-2">
+                  {analysisStatus === 'RUNNING' ? (
+                    <div className="flex items-center gap-2 bg-[#F1F5F9] border border-[#CBD5E1] px-2.5 py-1 rounded-lg">
+                      <span className="text-xs font-bold text-[#0F2942]">
+                        {lang === 'HI' ? `विश्लेषण जारी... ${analysisProgress}%` : `Analyzing... ${analysisProgress}%`}
+                      </span>
+                      <button
+                        onClick={handleCancelAnalysis}
+                        className="px-2 py-0.5 rounded bg-red-50 text-red-700 border border-red-200 text-xs font-bold hover:bg-red-100 cursor-pointer transition"
+                      >
+                        {lang === 'HI' ? 'रद्द करें' : 'Cancel'}
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={handleStartAnalysis}
+                      className="px-3.5 py-1.5 rounded-lg bg-[#003366] hover:bg-[#0F2942] text-white font-bold text-xs shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Sparkles size={14} />
+                      {lang === 'HI' ? 'वीडियो विश्लेषण करें (YOLO ट्रैकिंग)' : 'Analyze Video (YOLO Tracking)'}
+                    </button>
+                  )}
+                </div>
               </div>
 
-              {/* Analysis Execution Button in Video Corner (where timer previously was) */}
-              <div className="flex items-center space-x-2">
-                {analysisStatus === 'RUNNING' ? (
-                  <div className="flex items-center gap-2 bg-[#F1F5F9] border border-[#CBD5E1] px-2.5 py-1 rounded-lg">
-                    <span className="text-xs font-bold text-[#0F2942]">
-                      {lang === 'HI' ? `विश्लेषण जारी... ${analysisProgress}%` : `Analyzing... ${analysisProgress}%`}
-                    </span>
-                    <button
-                      onClick={handleCancelAnalysis}
-                      className="px-2 py-0.5 rounded bg-red-50 text-red-700 border border-red-200 text-xs font-bold hover:bg-red-100 cursor-pointer transition"
-                    >
-                      {lang === 'HI' ? 'रद्द करें' : 'Cancel'}
-                    </button>
-                  </div>
-                ) : (
+              {/* Direct Supabase / Custom Video URL Bar */}
+              {showUrlInput && (
+                <div className="flex flex-wrap items-center gap-2 p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs">
+                  <input
+                    type="url"
+                    value={urlInputValue}
+                    onChange={(e) => setUrlInputValue(e.target.value)}
+                    placeholder="Paste Supabase public video URL (e.g. https://xyz.supabase.co/storage/v1/object/public/traffic-videos/vid_sim.mp4)"
+                    className="flex-1 min-w-[240px] px-3 py-1.5 bg-white border border-slate-300 rounded text-slate-800 text-xs focus:ring-1 focus:ring-[#003366] outline-none"
+                  />
                   <button
-                    onClick={handleStartAnalysis}
-                    className="px-3.5 py-1.5 rounded-lg bg-[#003366] hover:bg-[#0F2942] text-white font-bold text-xs shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
+                    onClick={() => {
+                      const trimmed = urlInputValue.trim();
+                      setCustomVideoUrl(trimmed);
+                      try {
+                        if (trimmed) {
+                          localStorage.setItem('sih_custom_video_url', trimmed);
+                        } else {
+                          localStorage.removeItem('sih_custom_video_url');
+                        }
+                      } catch { }
+                      setIsVideoUnavailable(false);
+                      setVideoLoadError(null);
+                      setShowUrlInput(false);
+                    }}
+                    className="px-3 py-1.5 bg-[#003366] text-white font-bold rounded hover:bg-[#0F2942] cursor-pointer"
                   >
-                    <Sparkles size={14} />
-                    {lang === 'HI' ? 'वीडियो विश्लेषण करें (YOLO ट्रैकिंग)' : 'Analyze Video (YOLO Tracking)'}
+                    Apply URL
                   </button>
-                )}
-              </div>
+                  {customVideoUrl && (
+                    <button
+                      onClick={() => {
+                        setCustomVideoUrl('');
+                        setUrlInputValue('');
+                        try { localStorage.removeItem('sih_custom_video_url'); } catch { }
+                        setIsVideoUnavailable(false);
+                        setVideoLoadError(null);
+                        setShowUrlInput(false);
+                      }}
+                      className="px-2 py-1.5 text-slate-500 hover:text-red-600 text-xs cursor-pointer"
+                    >
+                      Reset Default
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Video Container with Canvas Overlay */}
@@ -933,10 +1010,15 @@ const TrafficIntelligence = ({ onNavigate }) => {
                 preload="auto"
                 onTimeUpdate={handleTimeUpdate}
                 onLoadedMetadata={handleLoadedMetadata}
+                onLoadedData={() => {
+                  setIsVideoUnavailable(false);
+                  setVideoLoadError(null);
+                }}
                 onEnded={handleVideoEnded}
                 onError={(e) => {
                   console.warn('Video element error on source:', currentVideoSrc, e);
-                  if (selectedVideo === 'vid_sim' && !useLocalVideoFallback) {
+                  setVideoLoadError(`Unable to stream video from: ${currentVideoSrc}`);
+                  if (selectedVideo === 'vid_sim' && !useLocalVideoFallback && !customVideoUrl) {
                     setUseLocalVideoFallback(true);
                     setIsVideoUnavailable(false);
                   } else {
